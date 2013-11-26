@@ -1,0 +1,784 @@
+#!/sbin/busybox sh
+#
+#
+#
+#
+#
+# *******
+# CLEANUP
+# *******
+ busybox echo "The item CLEANUP is being processed..."
+ if [ ! -e /restart.log ]; then
+   if [ ! -e /etc/cleanup.conf ]; then
+     busybox echo FOLDERS_TO_CLEAN_DURING_BOOT: > /etc/cleanup.conf
+     busybox echo /tmp >> /etc/cleanup.conf
+     busybox echo /var/run >> /etc/cleanup.conf
+   fi
+   FOLDERS=$(busybox cat /etc/cleanup.conf)
+   for i in $FOLDERS; do
+     busybox rm -fr $i/.* 2>/dev/null busybox rm -fr $i/*
+   done
+ fi
+#
+#
+#
+#
+#
+# ********************
+# VIRTUAL FILE SYSTEMS
+# ********************
+ busybox echo "The item VIRTUAL FILE SYSTEMS is being processed..."
+ for i in dev dev/pts proc run sys; do
+   if [ ! -e /$i ]; then
+     busybox mkdir /$i
+   fi
+ done
+ busybox mount -t proc proc /proc
+ busybox mount -t sysfs sysfs /sys
+ busybox mount -t tmpfs tmpfs /run
+ busybox mount -t devpts devpts /dev/pts
+#
+#
+#
+#
+#
+# ************
+# DEVICE NODES
+# ************
+ busybox echo "The item DEVICE NODES is being processed..."
+ if [ -e /restart.log ]; then
+   busybox mount -o remount,rw /
+ fi
+ cd /dev
+ busybox mdev -s
+ busybox mknod ppp c 108 0 2>null
+ busybox mknod js0 c 13 0 2>null
+#
+#
+#
+#
+#
+# **************
+# USER DIRECTORY
+# **************
+ busybox echo "The item USER DIRECTORY is being processed..."
+ busybox mkdir /usr 2>null
+ for i in bin lib sbin share; do
+   busybox mkdir /usr/$i 2>null
+ done
+ busybox rm /usr/etc 2>null
+ busybox ln -s /etc /usr/etc 2>null
+ busybox rm /usr/var 2>null
+ busybox ln -s /var /usr/var 2>null
+ busybox rm /usr/local 2>null
+ busybox ln -s /usr /usr/local 2>null
+#
+#
+#
+#
+#
+# ***************
+# BUSYBOX APPLETS
+# ***************
+ busybox echo "The item BUSYBOX APPLETS is being processed..."
+ busybox mkdir /bin 2>null
+ busybox cp /sbin/busybox /bin 2>null
+ busybox ln -sf /bin/busybox /sbin/busybox
+ /bin/busybox --install -s
+ rm /linuxrc 2>null
+ rm /init 2>null
+#
+#
+#
+#
+#
+# **********
+# INIT TABLE
+# **********
+ echo "The item INIT TABLE is being processed..."
+ if [ ! -e /etc/inittab ]; then
+   echo "::sysinit:/etc/init.d/rcS" > /etc/inittab
+   for i in 1 2 3 4 5 6; do
+     echo "tty$i::respawn:getty 38400 tty$i" >> /etc/inittab
+   done
+   echo "::ctrlaltdel:reboot" >> /etc/inittab
+   echo "::shutdown:/etc/init.d/shutdown.sh" >> /etc/inittab
+   if [ ! -e /restart.log ]; then
+     echo "The system is going down for reboot now!"
+     sleep 1
+     reboot -f
+   fi
+ fi
+#
+#
+#
+#
+#
+# ******************
+# FILE SYSTEMS TABLE
+# ******************
+ echo "The item FILE SYSTEMS TABLE is being processed..."
+ #for i in media media/cdrom media/disk media/floppy; do
+ for i in media media/disk; do
+   mkdir /$i 2>null
+ done
+ ln -sf /proc/mounts /etc/mtab
+ cat /etc/mtab > /etc/fstab
+ #echo "/dev/cdrom /media/cdrom auto ro" >> /etc/fstab
+ #echo "/dev/floppy /media/floppy auto rw" >> /etc/fstab
+ #ln -sf fd0 floppy
+#
+#
+#
+#
+#
+# ****************
+# ROOT FILE SYSTEM
+# ****************
+ echo "The item ROOT FILE SYSTEM is being processed..."
+ readlink root > /etc/rootfs
+ if [ -s /etc/rootfs ]; then
+   ROOTFS=/dev/$(cat /etc/rootfs)
+   else
+   ROOTFS=/dev/ram0
+ fi
+ echo $ROOTFS > /etc/rootfs
+#
+#
+#
+#
+#
+# *****************
+# FILE SYSTEM CHECK
+# *****************
+ echo "The item FILE SYSTEM CHECK is being processed..."
+ if [ -e /etc/fsck ]; then
+   if [ ! -e /restart.log ]; then
+     mount -o remount,ro /
+     MAX_MOUNTS_COUNT=$(cat /etc/fsck/max_mounts_count)
+     tune2fs -c $MAX_MOUNTS_COUNT $ROOTFS 1>null
+     e2fsck -p $ROOTFS
+     mount -o remount,rw /
+   fi
+ fi
+#
+#
+#
+#
+#
+# ***********
+# LOGS & PIDS
+# ***********
+ echo "The item LOGS & PIDS is being processed..."
+ for i in var var/log var/run; do
+   mkdir /$i 2>null
+ done
+ syslogd >null 2>&1
+ klogd -c 3
+ dmesg > /var/log/boot.log
+ rm /restart.log 2>null
+#
+#
+#
+#
+#
+# ***************
+# SHUTDOWN SCRIPT
+# ***************
+ echo "The item SHUTDOWN SCRIPT is being processed..."
+ if [ ! -e /etc/init.d/shutdown.sh ]; then
+   echo "
+   killall udevd 2>/dev/null
+   alsactl store -f /etc/mixer/asound.state 2>/dev/null
+   serverd stop 2>/dev/null
+   killall5
+   swapoff -a
+   umount -a 2>/dev/null" > /etc/init.d/shutdown.sh
+   chmod 755 /etc/init.d/shutdown.sh
+ fi
+#
+#
+#
+#
+#
+# **************
+# RESTART SCRIPT
+# **************
+ echo "The item RESTART SCRIPT is being processed..."
+ if [ ! -e /etc/init.d/restart.sh ]; then
+   echo "
+   if [ ! -e /tmp/.X0-lock ]; then
+     touch /restart.log
+     /etc/init.d/shutdown.sh
+     /etc/init.d/rcS
+     else
+     echo 'X is running. Close it and try again.'
+   fi" > /etc/init.d/restart.sh
+   chmod 755 /etc/init.d/restart.sh
+ fi
+ ln -sf /etc/init.d/restart.sh /sbin/restart
+#
+#
+#
+#
+#
+# ************
+# ROOT ACCOUNT
+# ************
+ echo "The item ROOT ACCOUNT is being processed..."
+ mkdir /home 2>null
+ mkdir /root 2>null
+ mkdir /home/v 2>null
+ ROOT=configured
+ for i in group passwd shadow; do
+   if [ ! -e /etc/$i ]; then
+     ROOT=unconfigured
+   fi
+ done
+ if [ $ROOT = unconfigured ]; then
+   echo "v::0:" > /etc/group
+   echo "v::0:0:v:/home/v:/bin/bash" > /etc/passwd
+   echo "v::9804:0:::::" > /etc/shadow
+ fi
+#
+#
+#
+#
+#
+# *******
+# PROFILE
+# *******
+ echo "The item PROFILE is being processed..."
+ if [ ! -e /etc/profile ]; then
+   PATH=/usr/sbin:/usr/bin:/usr/X11R6/bin:/sbin:/bin
+   echo PATH=$PATH > /etc/profile
+   echo 'PS1="\u:\w\# "' >> /etc/profile
+ fi
+ if [ ! -e /etc/hostname ]; then
+   echo "jmdkina"  > /etc/hostname
+ fi
+ if [ ! -e /etc/shells ]; then
+   for i in sh ash hush; do
+     echo "/bin/$i" >> /etc/shells
+   done
+ fi
+#
+#
+#
+#
+#
+# **********
+# LOCAL HOST
+# **********
+ echo "The item LOCAL HOST is being processed..."
+ if [ ! -e /etc/hosts ]; then
+   echo "127.0.0.1 localhost jmdkina" > /etc/hosts
+ fi
+ if [ ! -e /etc/host.conf ]; then
+   echo "order hosts,bind" > /etc/host.conf
+   echo "multi on" >> /etc/host.conf
+ fi
+ if [ ! -e /etc/networks ]; then
+   echo "localnet 127.0.0.0" > /etc/networks
+ fi
+ ifconfig lo 127.0.0.1 up
+ route add -net 127.0.0.0 netmask 255.0.0.0 lo
+ touch /etc/resolv.conf
+#
+#
+#
+#
+#
+# **************
+# SWAP PARTITION
+# **************
+ echo "The item SWAP PARTITION is being processed..."
+ if [ ! -e /etc/swap.conf ]; then
+   echo ENABLE_SWAPPING=yes > /etc/swap.conf
+ fi
+ . /etc/swap.conf
+ if [ $ENABLE_SWAPPING = yes ]; then
+   SWAP=$(fdisk -l| grep "Linux swap"| head -n 1| cut -c 6,7,8,9,10)
+   FSTAB_SWAP="# No partition to swap."
+   if [ -b /dev/$SWAP ]; then
+     ln -s $SWAP swap
+     FSTAB_SWAP="/dev/$SWAP swap swap default 0 0"
+   fi
+   echo $FSTAB_SWAP >> /etc/fstab
+   swapon -a
+ fi
+#
+#
+#
+#
+#
+# **********
+# XZ SUPPORT
+# **********
+ echo "The item XZ SUPPORT is being processed..."
+ mkdir /tmp 2>null
+ cp /sources/addon_xz* /tmp/xz.tar.xz 2>null
+ if [ -e /tmp/xz.tar.xz ]; then
+   xz -d /tmp/xz.tar.xz
+   tar -x -f /tmp/xz.tar -C /
+   rm -f /tmp/xz.tar
+ fi
+#
+#
+#
+#
+#
+# **********
+# NEW ADDONS
+# **********
+ echo "The item NEW ADDONS is being processed..."
+ mkdir /var/jmdkina 2>null
+ #mv /etc/init.d/core /var/jmdkina 2>null
+ #mv /etc/init.d/*wine* /var/jmdkina 2>null
+ ADDON_LIST=$(ls /sources/addon_*.tar.xz 2>null)
+ for i in $ADDON_LIST; do
+   echo "->Installing $i"
+   xz -d $i
+   tar -x -f /sources/*.tar -C /
+   #rm /sources/*.tar
+   #xz -z /sources/*.tar
+   mv /sources/*.tar /var/jmdkina
+ done
+#
+#
+#
+#
+# **********
+# OWN SOURCE
+# **********
+ echo "Install from /sources ... "
+ #mkdir /lib/x86_64-linux-gnu -p
+ ADDON_LIST=$(ls /sources/*.tar.bz2 2>null)
+ for i in $ADDON_LIST; do
+   echo "->Installing $i"
+   tar -x -f $i -C /
+   #rm /etc/init.d/*.tar
+   mv $i /var/jmdkina
+ done
+#
+#
+#
+# *****
+# CACHE
+# *****
+ echo "The item CACHE is being processed..."
+ if [ ! -e /etc/ld.so.conf ]; then
+   echo "/lib" > /etc/ld.so.conf
+   echo "/usr/lib" >> /etc/ld.so.conf
+ fi
+ mkfontdir /usr/share/fonts/* 2>null
+ mkdir /var/cache 2>null
+ ldconfig 2>null
+ fc-cache 2>null &
+#
+#
+#
+#
+#
+# **************
+# KERNEL MODULES
+# **************
+ echo "The item KERNEL MODULES is being processed..."
+ KERNEL=$(uname -r)
+ mkdir /lib/modules 2>null && mkdir /lib/modules/$KERNEL 2>null
+ if [ ! -e /lib/modules/$KERNEL/modules.dep ]; then
+   if [ -e /sbin/kmod ]; then
+     mv /lib/modules/$KERNEL/kernel/drivers/gpu / 2>null
+     depmod
+     mv /lib/modules/$KERNEL/modules.dep.bin /lib/modules/$KERNEL/modules.dep.nogpu
+     mv /lib/modules/$KERNEL/modules.alias.bin /lib/modules/$KERNEL/modules.alias.nogpu
+     mv /gpu /lib/modules/$KERNEL/kernel/drivers/ 2>null
+     depmod
+     mv /lib/modules/$KERNEL/modules.dep.bin /lib/modules/$KERNEL/modules.dep.gpu
+     mv /lib/modules/$KERNEL/modules.alias.bin /lib/modules/$KERNEL/modules.alias.gpu
+   fi
+ fi
+#
+#
+#
+#
+#
+# ***************
+# GPU FRAMEBUFFER
+# ***************
+ echo "The item GPU FRAMEBUFFER is being processed..."
+ GPU=no
+ if [ -e /etc/gpu/gpu.config ]; then
+   . /etc/gpu/gpu.config
+   ln -sf /usr/share/fb/fb.modes /etc/fb.modes
+ fi
+ if [ -e /sbin/kmod ]; then
+   if [ $GPU = no ]; then
+     ln -sf /lib/modules/$KERNEL/modules.dep.nogpu /lib/modules/$KERNEL/modules.dep.bin
+     ln -sf /lib/modules/$KERNEL/modules.alias.nogpu /lib/modules/$KERNEL/modules.alias.bin
+     else
+     ln -sf /lib/modules/$KERNEL/modules.dep.gpu /lib/modules/$KERNEL/modules.dep.bin
+     ln -sf /lib/modules/$KERNEL/modules.alias.gpu /lib/modules/$KERNEL/modules.alias.bin
+   fi
+ fi
+#
+#
+#
+#
+#
+# *************
+# INPUT DEVICES
+# *************
+ echo "The item INPUT DEVICES is being processed..."
+ modprobe psmouse 2>null
+ for i in ehci ohci uhci; do
+   modprobe $i-hcd 2>null
+ done
+ modprobe hid-generic 2>null
+ for i in hid kbd mouse; do
+   modprobe usb$i 2>null
+ done
+ if [ -e /etc/gpm/gpm.conf ]; then
+   . /etc/gpm/gpm.conf
+ fi
+ gpm -m $DEVICE -t $TYPE 2>null
+#
+#
+#
+#
+#
+# *******
+# HOTPLUG
+# *******
+ echo "The item HOTPLUG is being processed..."
+ if [ -e /sbin/udevd ]; then
+   for i in disk cdrom floppy tape audio video lp tty dialout kmem; do
+     addgroup $i 2>null
+   done
+   echo "" > /proc/sys/kernel/hotplug
+   udevd &
+ else
+   echo /sbin/mdev > /proc/sys/kernel/hotplug
+ fi
+ udevadm trigger >null 2>&1
+ udevadm settle >null 2>&1
+#
+#
+#
+#
+#
+# ***********
+# ACPI DAEMON
+# ***********
+ echo "The item ACPI DAEMON is being processed..."
+ if [ -e /lib/modules/$KERNEL/kernel/drivers/acpi ]; then
+   if [ ! -e /etc/acpi/button.cfg ]; then
+     mkdir /etc/acpi 2>null
+     mkdir /etc/acpi/PWRF 2>null
+     MESSAGE="Default action when PowerOff Button is pressed:"
+     echo "# $MESSAGE" > /etc/acpi/button.cfg
+     echo poweroff >> /etc/acpi/button.cfg
+     echo ". /etc/acpi/button.cfg" > /etc/acpi/PWRF/00000080
+     chmod 775 /etc/acpi/PWRF/00000080
+   fi
+ fi
+ acpid
+#
+#
+#
+#
+#
+# *********
+# AUTOMOUNT
+# *********
+ echo "The item AUTOMOUNT is being processed..."
+ echo "# Disks to mount during the boot time:" > /tmp/automount
+ echo MOUNT_HARD_DISK=yes >> /tmp/automount
+ echo MOUNT_REMOVABLE_DISK=yes >> /tmp/automount
+ echo MOUNT_CDROM_DISK=no >> /tmp/automount
+ . /tmp/automount
+ if [ ! -e /etc/automount.conf ]; then
+   cat /tmp/automount > /etc/automount.conf
+ fi
+ rm /tmp/automount
+ . /etc/automount.conf
+#
+#
+#
+#
+#
+# ***************
+# PARTITIONS LIST
+# ***************
+ echo "The item PARTITIONS LIST is being processed..."
+ ALL_DISKS_LIST=$(fdisk -l | grep Disk | cut -c 11,12,13)
+ for i in $ALL_DISKS_LIST; do
+   if [ -b /dev/$i ]; then
+     PART_LIST=$(cat /proc/partitions | grep -v " 1 $i" | grep $i | cut -c 26,27,28,29,30)
+     echo $PART_LIST >> /tmp/partlist.tmp
+     j=1
+     if [ -b /dev/$i$j ]; then
+       sed -i 's/'$i' //g' /tmp/partlist.tmp
+     fi
+   fi
+ done
+ sed -i 's/'$(readlink swap)'//g' /tmp/partlist.tmp 2>null
+ sed -i 's/'$(readlink root)'//g' /tmp/partlist.tmp 2>null
+#
+#
+#
+#
+# *********
+# HARD DISK
+# *********
+ echo "The item HARD DISK is being processed..."
+ mkdir /mnt 2>null
+ rmdir /mnt/* 2>null
+ ALL_PART_LIST=$(cat /tmp/partlist.tmp) 2>null
+ FIRST_DISK_PART_LIST=$(cat /tmp/partlist.tmp | head -n 1) 2>null
+ for i in $FIRST_DISK_PART_LIST; do
+   echo "/dev/$i /mnt/$i auto rw" >> /etc/fstab
+   mkdir /mnt/$i 2>null
+   if [ $MOUNT_HARD_DISK = yes ]; then
+     ntfs-3g $i /mnt/$i 2>null
+     mount $i /mnt/$i 2>null
+   fi
+ done
+ rm -f /tmp/partlist.tmp
+#
+#
+#
+#
+# ***************
+# REMOVABLE DISKS
+# ***************
+ echo "The item REMOVABLE DISKS is being processed..."
+ rmdir /media/disk/* 2>null
+ for i in $ALL_PART_LIST; do
+   if [ ! -e /mnt/$i ]; then
+     echo "/dev/$i /media/disk/$i auto rw" >> /etc/fstab
+     mkdir /media/disk/$i 2>null
+   fi
+   if [ $MOUNT_REMOVABLE_DISK = yes ]; then
+     ntfs-3g $i /media/disk/$i 2>null
+     mount $i /media/disk/$i 2>null
+     rmdir /media/disk/* 2>null
+   fi
+ done
+ if [ $MOUNT_HARD_DISK = yes ]; then
+   rmdir /mnt/* 2>null
+ fi
+#
+#
+#
+#
+#
+# ************
+# OPTICAL DISC
+# ************
+ #echo "The item OPTICAL DISC is being processed..."
+ #INFO=/proc/sys/dev/cdrom/info
+ #CDROM=$(cat $INFO | grep 'drive name' | head -n 1 | cut -f 3)
+ #if [ ! -b /dev/$CDROM ]; then
+ #  CDROM=sr0
+ #fi
+ #ln -sf $CDROM cdrom
+ #ln -sf cdrom dvd
+ #if [ $MOUNT_CDROM_DISK = yes ]; then
+ #  mount /dev/cdrom
+ #fi
+#
+#
+#
+#
+#
+# *******************
+# NAME SERVICE SWITCH
+# *******************
+ echo "The item NAME SERVICE SWITCH is being processed..."
+ if [ -e /lib/libnss_files.so.2 ]; then
+   if [ ! -e /etc/nsswitch.conf ]; then
+     for i in passwd group shadow; do
+       echo "$i: files" >> /etc/nsswitch.conf
+     done
+     echo "hosts: files dns" >> /etc/nsswitch.conf
+     for i in networks rpc services; do
+       echo "$i: files" >> /etc/nsswitch.conf
+     done
+   fi
+ fi
+#
+#
+#
+#
+#
+# *****************
+# NETWORK INTERFACE
+# *****************
+ echo "The item NETWORK INTERFACE is being processed..."
+ INTERFACE=eth0
+ if [ -e /etc/interface ]; then
+   INTERFACE=$(cat /etc/interface)
+ fi
+ echo $INTERFACE > /etc/interface
+ if [ ! $INTERFACE = ppp0 ]; then
+   if [ -e /etc/net/wifi/wifi.conf ]; then
+     . /etc/net/wifi/wifi.conf
+   fi
+   iwconfig $INTERFACE key $KEY essid $ESSID mode $MODE 2>null
+ fi
+#
+#
+#
+#
+#
+# *******************
+# INTERNET CONNECTION
+# *******************
+ echo "The item INTERNET CONNECTION is being processed..."
+ if [ ! $INTERFACE = ppp0 ]; then
+   STATIC=no
+   if [ -e /etc/net/net.conf ]; then
+     . /etc/net/net.conf
+   fi
+   if [ $STATIC = no ]; then
+     udhcpc -i $INTERFACE -n -p /var/run/dhcp.pid >null 2>&1 &
+     else
+     ifconfig $INTERFACE $IP netmask $NETMASK up
+     route add default gateway $GATEWAY
+     echo "nameserver $DNS_SERVER" > /etc/resolv.conf
+   fi
+ fi
+#
+#
+#
+#
+#
+# *****
+# MODEM
+# *****
+ echo "The item MODEM is being processed..."
+ if [ -e /usr/share/usb_modeswitch/usb_modeswitch.conf ]; then
+   ln -s /usr/share/usb_modeswitch/usb_modeswitch.conf /etc 2>null
+ fi
+ if [ $INTERFACE = ppp0 ]; then
+   if [ -e /usr/bin/wvdialconf ]; then
+     echo "[Dialer Defaults]" > /etc/ppp/wvdial.conf
+     for i in Password Phone Username; do
+       I=$(cat /etc/net/modem/$i|grep -v Replace)
+       echo "$i = $I" >> /etc/ppp/wvdial.conf
+     done
+     wvdialconf /etc/ppp/wvdial.conf >null 2>&1
+     wvdial -C /etc/ppp/wvdial.conf 2>null &
+   fi
+ fi
+#
+#
+#
+#
+#
+# ***********
+# SOUND MIXER
+# ***********
+ echo "The item SOUND MIXER is being processed..."
+ for i in pcm_oss mixer_oss seq_oss; do
+   modprobe snd_$i 2>null
+ done
+ if [ -e /dev/mixer ]; then
+   mkdir /etc/mixer 2>null
+   if [ ! -e /etc/mixer/aumixrc ]; then
+     touch /etc/mixer/aumixrc && aumix -v 100 2>null
+     aumix -q > /etc/mixer/aumixrc 2>null
+     sed -i 's/0, 0/90, 90/g' /etc/mixer/aumixrc
+     aumix -f /etc/mixer/aumixrc -L >null 2>&1
+     else
+     alsactl restore -f /etc/mixer/asound.state 2>null
+   fi
+ fi
+#
+#
+#
+#
+#
+# ************
+# KERNEL IMAGE
+# ************
+ echo "The item KERNEL IMAGE is being processed..."
+ mkdir /boot 2>null
+ cp /proc/config.gz /boot
+ gunzip -f /boot/config.gz
+ dmesg > /boot/boot.log
+ if [ ! -e /boot/bzImage ]; then
+   tar -xz -f /var/jmdkina/core/kernel-$KERNEL.tar.gz -C / 2>null
+ fi
+#
+#
+#
+#
+#
+# ****************
+# LILO BOOT LOADER
+# ****************
+ echo "The item LILO BOOT LOADER is being processed..."
+ if [ -e /sbin/lilo ]; then
+   if [ -e /boot/bzImage ]; then
+     if [ ! -e /etc/lilo.conf ]; then
+       echo "boot=$ROOTFS" > /etc/lilo.conf
+       echo "image=/boot/bzImage" >> /etc/lilo.conf
+       echo "root=$ROOTFS" >> /etc/lilo.conf
+       echo "label=jmdkina" >> /etc/lilo.conf
+       echo "read-write" >> /etc/lilo.conf
+     fi
+   fi
+ fi
+#
+#
+#
+#
+#
+# *********
+# AUTOSTART
+# *********
+ echo "The item AUTOSTART is being processed..."
+ AUTOSTART=/etc/init.d/autostart.sh
+ if [ ! -e $AUTOSTART ]; then
+   echo "udev 2>/dev/null &" > $AUTOSTART
+   echo "/usr/share/server/autostart.sh 2>/dev/null &" >> $AUTOSTART
+   chmod 775 $AUTOSTART
+ fi
+ . $AUTOSTART
+#
+#
+#
+#
+# ******
+# BASHRC
+# ******
+# echo "The Item BASHRC is being processed. .."
+# if [ ! -e /root ]; then
+#   mkdir /root
+# fi
+#
+#
+#
+#
+#
+# *****
+# LOGIN
+# *****
+ echo "The item LOGIN is being processed..."
+ if [ ! -e /etc/shadow- ]; then
+   clear
+   passwd
+ fi
+ echo "================================================" > /etc/issue
+ echo "==== Welcome to jmdkina linux ==================" >> /etc/issue
+ date >> /etc/issue
+ echo "================================================" >> /etc/issue
+ echo "" >> /etc/issue
+ #date > /etc/issue
+ #echo "" >> /etc/issue
+ #cal >> /etc/issue
+ #echo "" >> /etc/issue
+ hostname -F /etc/hostname
+ reset

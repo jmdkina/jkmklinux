@@ -1,0 +1,4 @@
+
+**1** betasystem boot x86 system
+default betasystem
+

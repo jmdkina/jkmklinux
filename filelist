@@ -1,0 +1,28 @@
+
+#####################
+# betainitrd/
+# Last modified: 1360113127.5347068100
+
+slink /init /sbin/busybox 777 1000 1000
+dir /dev 755 1000 1000
+dir /sbin 755 1000 1000
+slink /sbin/init busybox 777 1000 1000
+file /sbin/busybox betainitrd/sbin/busybox 775 1000 1000
+dir /lib 755 1000 1000
+slink /lib/libm.so.6 libm-2.15.so 777 1000 1000
+slink /lib/libc.so.6 libc-2.15.so 777 1000 1000
+file /lib/ld-2.15.so betainitrd/lib/ld-2.15.so 755 1000 1000
+file /lib/libm-2.15.so betainitrd/lib/libm-2.15.so 644 1000 1000
+file /lib/libc-2.15.so betainitrd/lib/libc-2.15.so 755 1000 1000
+slink /lib/ld-linux.so.2 ld-2.15.so 777 1000 1000
+dir /etc 755 1000 1000
+file /etc/inittab betainitrd/etc/inittab 644 1000 1000
+dir /etc/init.d 755 1000 1000
+file /etc/init.d/rcS betainitrd/etc/init.d/rcS 775 1000 1000
+dir /sources 775 1000 1000
+file /sources/htop-1.0.2.tar.bz2 betainitrd/sources/htop-1.0.2.tar.bz2 664 1000 1000
+file /sources/glib-2.34.tar.bz2 betainitrd/sources/glib-2.34.tar.bz2 664 1000 1000
+file /sources/dosfstools-3.0.14.tar.bz2 betainitrd/sources/dosfstools-3.0.14.tar.bz2 664 1000 1000
+file /sources/man-3.4.tar.bz2 betainitrd/sources/man-3.4.tar.bz2 664 1000 1000
+file /sources/ncurses-5.9.tar.bz2 betainitrd/sources/ncurses-5.9.tar.bz2 664 1000 1000
+file /sources/bash-4.2.tar.bz2 betainitrd/sources/bash-4.2.tar.bz2 664 1000 1000
